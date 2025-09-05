@@ -5,7 +5,7 @@ import logging
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict
-from dhanhq import marketfeed
+from dhanhq import DhanFeed
 
 # --- Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -96,7 +96,7 @@ def on_close(close_status_code, close_msg):
 def on_open():
     logging.info("Connected to DhanHQ WebSocket.")
 
-feed = marketfeed(
+feed = DhanFeed(
     client_id=DHAN_CLIENT_ID,
     access_token=DHAN_ACCESS_TOKEN,
     instruments=[],
