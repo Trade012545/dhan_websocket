@@ -9,7 +9,8 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Set, Tuple
 
-# --- Configuration ---\nlogging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# --- Configuration ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 DHAN_CLIENT_ID = os.environ.get("DHAN_CLIENT_ID")
 DHAN_ACCESS_TOKEN = os.environ.get("DHAN_ACCESS_TOKEN")
@@ -159,31 +160,39 @@ class DhanFeedManager:
         message_length = header[1]
         security_id = str(header[3])
 
-        if feed_code == 2 and message_length == 16:
-            try:
-                payload = struct.unpack('<fi', message[8:])
-                ltp = payload[0]
-                ltt = payload[1]
+        logging.info(f"Parsing message with feed_code: {feed_code}, message_length: {message_length}, security_id: {security_id}")
 
-                trading_symbol = security_id_to_symbol.get(int(security_id))
-                if trading_symbol:
-                    binance_like_data = {
-                        "e": "kline",
-                        "E": ltt,
-                        "s": trading_symbol,
-                        "k": {
-                            "t": ltt,
-                            "o": ltp,
-                            "h": ltp,
-                            "l": ltp,
-                            "c": ltp,
-                            "v": 0,
-                        }
-                    }
-                    asyncio.create_task(self.connection_manager.broadcast(binance_like_data, security_id))
+        if feed_code == 2:
+            if message_length == 16:
+                if len(message) - 8 >= 8:
+                    try:
+                        payload = struct.unpack('<fi', message[8:])
+                        ltp = payload[0]
+                        ltt = payload[1]
 
-            except struct.error as e:
-                logging.error(f"[ERROR] Failed to unpack Ticker packet for SID {security_id}: {e}")
+                        trading_symbol = security_id_to_symbol.get(int(security_id))
+                        if trading_symbol:
+                            binance_like_data = {
+                                "e": "kline",
+                                "E": ltt,
+                                "s": trading_symbol,
+                                "k": {
+                                    "t": ltt,
+                                    "o": ltp,
+                                    "h": ltp,
+                                    "l": ltp,
+                                    "c": ltp,
+                                    "v": 0,
+                                }
+                            }
+                            asyncio.create_task(self.connection_manager.broadcast(binance_like_data, security_id))
+
+                    except struct.error as e:
+                        logging.error(f"[ERROR] Failed to unpack Ticker packet for SID {security_id}: {e}")
+                else:
+                    logging.error(f"[ERROR] Ticker packet for SID {security_id} has insufficient length: {len(message)}")
+            else:
+                logging.warning(f"Received Ticker packet with unexpected length for SID {security_id}: {message_length}")
 
         elif feed_code == 6:
             logging.info(f"Received heartbeat from DhanHQ: {message}")
@@ -244,7 +253,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         client_subscriptions.remove(subscription_id)
                         connection_manager.disconnect(websocket, subscription_id)
                         if not connection_manager.get_clients_for_subscription(subscription_id):
-                            await dhan_manager.unsubscribe([instrument_tuple])
+                            await dhan_manager.unsubscribe([(exchange_segment, subscription_id)])
 
             if method == 'SUBSCRIBE':
                 await dhan_manager.subscribe(instrument_tuples)
