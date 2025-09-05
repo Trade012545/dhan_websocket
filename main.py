@@ -87,38 +87,53 @@ class DhanFeedManager:
     async def subscribe(self, instruments: List[Tuple[str, str]]):
         if not self.websocket:
             return
+        
         new_instruments = [inst for inst in instruments if inst not in self.subscribed_instruments]
-        if new_instruments:
-            self.subscribed_instruments.update(new_instruments)
-            
-            instrument_list = [
-                {"exchangeSegment": str(ex), "securityId": str(sec_id)} 
-                for ex, sec_id in new_instruments
-            ]
+        if not new_instruments:
+            return
 
+        self.subscribed_instruments.update(new_instruments)
+        
+        # Group instruments by exchange segment
+        grouped_instruments: Dict[str, List[Dict[str, str]]] = {}
+        for ex, sec_id in new_instruments:
+            if ex not in grouped_instruments:
+                grouped_instruments[ex] = []
+            grouped_instruments[ex].append({"securityId": str(sec_id)})
+
+        # Create and send a subscription message for each group
+        for ex, inst_list in grouped_instruments.items():
             subscription_message = {
                 "RequestCode": 15,
-                "InstrumentCount": len(instrument_list),
-                "InstrumentList": instrument_list
+                "InstrumentCount": len(inst_list),
+                "InstrumentList": [{"exchangeSegment": ex, "securityId": inst["securityId"]} for inst in inst_list]
+
             }
             await self.websocket.send(json.dumps(subscription_message))
-            print(f"Sent subscription request: {subscription_message}")
+            print(f"Sent subscription request for {ex}: {subscription_message}")
 
     async def unsubscribe(self, instruments: List[Tuple[str, str]]):
         if not self.websocket:
             return
+
         self.subscribed_instruments.difference_update(instruments)
-        instrument_list = [
-            {"exchangeSegment": str(ex), "securityId": str(sec_id)} 
-            for ex, sec_id in instruments
-        ]
-        unsubscription_message = {
-            "RequestCode": 16,
-            "InstrumentCount": len(instrument_list),
-            "InstrumentList": instrument_list
-        }
-        await self.websocket.send(json.dumps(unsubscription_message))
-        print(f"Sent unsubscription request: {unsubscription_message}")
+        
+        # Group instruments by exchange segment
+        grouped_instruments: Dict[str, List[Dict[str, str]]] = {}
+        for ex, sec_id in instruments:
+            if ex not in grouped_instruments:
+                grouped_instruments[ex] = []
+            grouped_instruments[ex].append({"securityId": str(sec_id)})
+
+        # Create and send an unsubscription message for each group
+        for ex, inst_list in grouped_instruments.items():
+            unsubscription_message = {
+                "RequestCode": 16,
+                "InstrumentCount": len(inst_list),
+                "InstrumentList": [{"exchangeSegment": ex, "securityId": inst["securityId"]} for inst in inst_list]
+            }
+            await self.websocket.send(json.dumps(unsubscription_message))
+            print(f"Sent unsubscription request for {ex}: {unsubscription_message}")
 
     async def listen(self):
         while self.is_running:
