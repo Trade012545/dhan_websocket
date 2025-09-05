@@ -5,6 +5,7 @@ import websockets
 import struct
 import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Set, Tuple
 
 # --- Configuration ---
@@ -24,6 +25,15 @@ except Exception as e:
     raise RuntimeError(f"Error loading api-scrip-master.csv: {e}")
 
 app = FastAPI()
+
+# CORS Middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
 
 # --- Connection Manager for Clients ---
 class ConnectionManager:
