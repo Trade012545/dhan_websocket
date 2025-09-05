@@ -96,7 +96,7 @@ def on_close(close_status_code, close_msg):
 def on_open():
     logging.info("Connected to DhanHQ WebSocket.")
 
-feed = MarketFeed(
+feed = marketfeed(
     client_id=DHAN_CLIENT_ID,
     access_token=DHAN_ACCESS_TOKEN,
     instruments=[],
