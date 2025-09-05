@@ -9,8 +9,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Set, Tuple
 
-# --- Configuration ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# --- Configuration ---\nlogging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 DHAN_CLIENT_ID = os.environ.get("DHAN_CLIENT_ID")
 DHAN_ACCESS_TOKEN = os.environ.get("DHAN_ACCESS_TOKEN")
@@ -91,13 +90,13 @@ class DhanFeedManager:
     async def subscribe(self, instruments: List[Tuple[str, str]]):
         if not self.websocket:
             return
-        
+
         new_instruments = [inst for inst in instruments if inst not in self.subscribed_instruments]
         if not new_instruments:
             return
 
         self.subscribed_instruments.update(new_instruments)
-        
+
         # Group instruments by exchange segment
         grouped_instruments: Dict[str, List[Dict[str, str]]] = {}
         for ex, sec_id in new_instruments:
@@ -121,7 +120,7 @@ class DhanFeedManager:
             return
 
         self.subscribed_instruments.difference_update(instruments)
-        
+
         # Group instruments by exchange segment
         grouped_instruments: Dict[str, List[Dict[str, str]]] = {}
         for ex, sec_id in instruments:
@@ -185,10 +184,10 @@ class DhanFeedManager:
 
             except struct.error as e:
                 logging.error(f"[ERROR] Failed to unpack Ticker packet for SID {security_id}: {e}")
-        
+
         elif feed_code == 6:
             logging.info(f"Received heartbeat from DhanHQ: {message}")
-        
+
         else:
             logging.warning(f"Received unknown message from DhanHQ: {message}")
 
@@ -222,31 +221,37 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.send_json({"error": "Invalid message format"})
                 continue
 
-            instrument_name = params[0].split('@')[0]
-            
-            security_id = symbol_to_security_id.get(instrument_name)
-            exchange_segment = symbol_to_exchange_segment.get(instrument_name)
+            instrument_tuples = []
+            for param in params:
+                instrument_name = param.split('@')[0]
 
-            if not security_id or not exchange_segment:
-                await websocket.send_json({"error": f"Symbol {instrument_name} not found or missing data"})
-                continue
-            
-            subscription_id = str(security_id)
-            instrument_tuple = (exchange_segment, subscription_id)
+                security_id = symbol_to_security_id.get(instrument_name)
+                exchange_segment = symbol_to_exchange_segment.get(instrument_name)
+
+                if not security_id or not exchange_segment:
+                    await websocket.send_json({"error": f"Symbol {instrument_name} not found or missing data"})
+                    continue
+
+                subscription_id = str(security_id)
+                instrument_tuples.append((exchange_segment, subscription_id))
+
+                if method == 'SUBSCRIBE':
+                    await connection_manager.connect(websocket, subscription_id)
+                    client_subscriptions.append(subscription_id)
+
+                elif method == 'UNSUBSCRIBE':
+                    if subscription_id in client_subscriptions:
+                        client_subscriptions.remove(subscription_id)
+                        connection_manager.disconnect(websocket, subscription_id)
+                        if not connection_manager.get_clients_for_subscription(subscription_id):
+                            await dhan_manager.unsubscribe([instrument_tuple])
 
             if method == 'SUBSCRIBE':
-                await connection_manager.connect(websocket, subscription_id)
-                client_subscriptions.append(subscription_id)
-                await dhan_manager.subscribe([instrument_tuple])
+                await dhan_manager.subscribe(instrument_tuples)
+                await websocket.send_json({"result": None, "id": data.get('id')})
+            elif method == 'UNSUBSCRIBE':
                 await websocket.send_json({"result": None, "id": data.get('id')})
 
-            elif method == 'UNSUBSCRIBE':
-                if subscription_id in client_subscriptions:
-                    client_subscriptions.remove(subscription_id)
-                    connection_manager.disconnect(websocket, subscription_id)
-                    if not connection_manager.get_clients_for_subscription(subscription_id):
-                        await dhan_manager.unsubscribe([instrument_tuple])
-                await websocket.send_json({"result": None, "id": data.get('id')})
 
     except WebSocketDisconnect:
         logging.info(f"Client disconnected: {websocket.client}")
