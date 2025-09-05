@@ -15,9 +15,9 @@ DHAN_ACCESS_TOKEN = os.environ.get("DHAN_ACCESS_TOKEN")
 # Load the CSV file and create lookup dictionaries
 try:
     script_df = pd.read_csv('api-scrip-master.csv')
-    # Set tradingSymbol as the index for efficient lookup
     script_df.set_index('tradingSymbol', inplace=True)
     symbol_to_security_id = script_df['securityId'].to_dict()
+    security_id_to_symbol = {v: k for k, v in symbol_to_security_id.items()}
     symbol_to_exchange_segment = script_df['exchangeSegment'].to_dict()
 except FileNotFoundError:
     raise RuntimeError("Error: api-scrip-master.csv not found. Please make sure the file is in the same directory.")
@@ -78,7 +78,6 @@ class DhanFeedManager:
             self.websocket = await websockets.connect(uri)
             print("Connected to DhanHQ WebSocket.")
             self.is_running = True
-            # Resubscribe to instruments if any
             if self.subscribed_instruments:
                 await self.subscribe(list(self.subscribed_instruments))
         except Exception as e:
@@ -108,14 +107,13 @@ class DhanFeedManager:
     async def unsubscribe(self, instruments: List[Tuple[str, str]]):
         if not self.websocket:
             return
-        # Note: Unsubscribe message format might also need to be updated per docs
         self.subscribed_instruments.difference_update(instruments)
         instrument_list = [
             {"exchangeSegment": str(ex), "securityId": str(sec_id)} 
             for ex, sec_id in instruments
         ]
         unsubscription_message = {
-            "RequestCode": 16, # Assuming 16 for unsubscribe, needs verification
+            "RequestCode": 16,
             "InstrumentCount": len(instrument_list),
             "InstrumentList": instrument_list
         }
@@ -148,20 +146,22 @@ class DhanFeedManager:
                 ltp = payload[0]
                 ltt = payload[1]
 
-                binance_like_data = {
-                    "e": "kline",
-                    "E": ltt,
-                    "s": security_id,
-                    "k": {
-                        "t": ltt,
-                        "o": ltp,
-                        "h": ltp,
-                        "l": ltp,
-                        "c": ltp,
-                        "v": 0,
+                trading_symbol = security_id_to_symbol.get(int(security_id))
+                if trading_symbol:
+                    binance_like_data = {
+                        "e": "kline",
+                        "E": ltt,
+                        "s": trading_symbol,
+                        "k": {
+                            "t": ltt,
+                            "o": ltp,
+                            "h": ltp,
+                            "l": ltp,
+                            "c": ltp,
+                            "v": 0,
+                        }
                     }
-                }
-                asyncio.create_task(self.connection_manager.broadcast(binance_like_data, security_id))
+                    asyncio.create_task(self.connection_manager.broadcast(binance_like_data, security_id))
 
             except struct.error as e:
                 print(f"[ERROR] Failed to unpack Ticker packet for SID {security_id}: {e}")
@@ -232,8 +232,6 @@ async def websocket_endpoint(websocket: WebSocket):
         for sub_id in client_subscriptions:
             connection_manager.disconnect(websocket, sub_id)
             if not connection_manager.get_clients_for_subscription(sub_id):
-                # Re-lookup exchange segment for unsubscribe
-                # This part can be optimized by storing the tuple
                 for symbol, sec_id in symbol_to_security_id.items():
                     if str(sec_id) == sub_id:
                         exchange = symbol_to_exchange_segment.get(symbol)
