@@ -144,7 +144,13 @@ class DhanFeedManager:
             try:
                 message = await self.websocket.recv()
                 logging.info(f"Received message from DhanHQ: {message}")
-                self.parse_message(message)
+                buffer = message
+                while buffer:
+                    header = struct.unpack('<BHBI', buffer[:8])
+                    message_length = header[1]
+                    self.parse_message(buffer[:8+message_length])
+                    buffer = buffer[8+message_length:]
+
             except websockets.exceptions.ConnectionClosed:
                 logging.warning("DhanHQ WebSocket connection closed. Reconnecting...")
                 await self.connect()
