@@ -4,11 +4,14 @@ import pandas as pd
 import websockets
 import struct
 import json
+import logging
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Set, Tuple
 
 # --- Configuration ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 DHAN_CLIENT_ID = os.environ.get("DHAN_CLIENT_ID")
 DHAN_ACCESS_TOKEN = os.environ.get("DHAN_ACCESS_TOKEN")
 
@@ -44,14 +47,14 @@ class ConnectionManager:
         if subscription_id not in self.active_connections:
             self.active_connections[subscription_id] = []
         self.active_connections[subscription_id].append(websocket)
-        print(f"Client {websocket.client} connected and subscribed to {subscription_id}")
+        logging.info(f"Client {websocket.client} connected and subscribed to {subscription_id}")
 
     def disconnect(self, websocket: WebSocket, subscription_id: str):
         if subscription_id in self.active_connections:
             self.active_connections[subscription_id].remove(websocket)
-            print(f"Client {websocket.client} disconnected from {subscription_id}")
+            logging.info(f"Client {websocket.client} disconnected from {subscription_id}")
             if not self.active_connections[subscription_id]:
-                print(f"No clients left for {subscription_id}. Deleting entry.")
+                logging.info(f"No clients left for {subscription_id}. Deleting entry.")
                 del self.active_connections[subscription_id]
 
     def get_clients_for_subscription(self, subscription_id: str) -> List[WebSocket]:
@@ -59,6 +62,7 @@ class ConnectionManager:
 
     async def broadcast(self, message: dict, subscription_id: str):
         connections = self.active_connections.get(subscription_id, [])[:]
+        logging.info(f"Broadcasting to {len(connections)} clients for subscription {subscription_id}: {message}")
         for connection in connections:
             await connection.send_json(message)
 
@@ -76,12 +80,12 @@ class DhanFeedManager:
         uri = f"wss://api-feed.dhan.co?version=2&token={self.access_token}&clientId={self.client_id}&authType=2"
         try:
             self.websocket = await websockets.connect(uri)
-            print("Connected to DhanHQ WebSocket.")
+            logging.info("Connected to DhanHQ WebSocket.")
             self.is_running = True
             if self.subscribed_instruments:
                 await self.subscribe(list(self.subscribed_instruments))
         except Exception as e:
-            print(f"Failed to connect to DhanHQ WebSocket: {e}")
+            logging.error(f"Failed to connect to DhanHQ WebSocket: {e}")
             self.is_running = False
 
     async def subscribe(self, instruments: List[Tuple[str, str]]):
@@ -109,8 +113,8 @@ class DhanFeedManager:
                 "InstrumentList": [{"exchangeSegment": ex, "securityId": inst["securityId"]} for inst in inst_list]
 
             }
+            logging.info(f"Sending subscription request to DhanHQ for {ex}: {subscription_message}")
             await self.websocket.send(json.dumps(subscription_message))
-            print(f"Sent subscription request for {ex}: {subscription_message}")
 
     async def unsubscribe(self, instruments: List[Tuple[str, str]]):
         if not self.websocket:
@@ -132,19 +136,20 @@ class DhanFeedManager:
                 "InstrumentCount": len(inst_list),
                 "InstrumentList": [{"exchangeSegment": ex, "securityId": inst["securityId"]} for inst in inst_list]
             }
+            logging.info(f"Sending unsubscription request to DhanHQ for {ex}: {unsubscription_message}")
             await self.websocket.send(json.dumps(unsubscription_message))
-            print(f"Sent unsubscription request for {ex}: {unsubscription_message}")
 
     async def listen(self):
         while self.is_running:
             try:
                 message = await self.websocket.recv()
+                logging.info(f"Received message from DhanHQ: {message}")
                 self.parse_message(message)
             except websockets.exceptions.ConnectionClosed:
-                print("DhanHQ WebSocket connection closed. Reconnecting...")
+                logging.warning("DhanHQ WebSocket connection closed. Reconnecting...")
                 await self.connect()
             except Exception as e:
-                print(f"An error occurred in DhanHQ listener: {e}")
+                logging.error(f"An error occurred in DhanHQ listener: {e}")
 
     def parse_message(self, message: bytes):
         if len(message) < 8:
@@ -179,13 +184,13 @@ class DhanFeedManager:
                     asyncio.create_task(self.connection_manager.broadcast(binance_like_data, security_id))
 
             except struct.error as e:
-                print(f"[ERROR] Failed to unpack Ticker packet for SID {security_id}: {e}")
+                logging.error(f"[ERROR] Failed to unpack Ticker packet for SID {security_id}: {e}")
         
         elif feed_code == 6:
-            pass
+            logging.info(f"Received heartbeat from DhanHQ: {message}")
         
         else:
-            pass
+            logging.warning(f"Received unknown message from DhanHQ: {message}")
 
     async def run(self):
         await self.connect()
@@ -209,6 +214,7 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_json()
+            logging.info(f"Received message from client {websocket.client}: {data}")
             method = data.get('method')
             params = data.get('params', [])
 
@@ -243,7 +249,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.send_json({"result": None, "id": data.get('id')})
 
     except WebSocketDisconnect:
-        print(f"Client disconnected: {websocket.client}")
+        logging.info(f"Client disconnected: {websocket.client}")
         for sub_id in client_subscriptions:
             connection_manager.disconnect(websocket, sub_id)
             if not connection_manager.get_clients_for_subscription(sub_id):
@@ -255,7 +261,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         break
 
     except Exception as e:
-        print(f"An error occurred in websocket endpoint: {e}")
+        logging.error(f"An error occurred in websocket endpoint: {e}")
 
 @app.get("/")
 def read_root():
