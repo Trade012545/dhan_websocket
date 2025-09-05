@@ -5,7 +5,7 @@ import logging
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict
-from dhanhq import DhanHqClient
+from dhanhq import MarketFeed
 
 # --- Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -66,12 +66,51 @@ class ConnectionManager:
 
 # --- DhanHQ Client Setup ---
 connection_manager = ConnectionManager()
-dhan = DhanHqClient(DHAN_CLIENT_ID, DHAN_ACCESS_TOKEN)
+
+def on_message(message):
+    logging.info(f"Received message from DhanHQ: {message}")
+    security_id = message['security_id']
+    trading_symbol = security_id_to_symbol.get(int(security_id))
+    if trading_symbol:
+        binance_like_data = {
+            "e": "kline",
+            "E": message['exchange_timestamp'],
+            "s": trading_symbol,
+            "k": {
+                "t": message['exchange_timestamp'],
+                "o": message['ltp'],
+                "h": message['ltp'],
+                "l": message['ltp'],
+                "c": message['ltp'],
+                "v": 0,
+            }
+        }
+        asyncio.run(connection_manager.broadcast(binance_like_data, security_id))
+
+def on_error(error):
+    logging.error(f"Received error from DhanHQ: {error}")
+
+def on_close(close_status_code, close_msg):
+    logging.info(f"Connection closed with status code: {close_status_code}, message: {close_msg}")
+
+def on_open():
+    logging.info("Connected to DhanHQ WebSocket.")
+
+feed = MarketFeed(
+    client_id=DHAN_CLIENT_ID,
+    access_token=DHAN_ACCESS_TOKEN,
+    instruments=[],
+    on_tick=on_message,
+    on_error=on_error,
+    on_close=on_close,
+    on_open=on_open
+)
 
 @app.on_event("startup")
 async def startup_event():
     if not DHAN_CLIENT_ID or not DHAN_ACCESS_TOKEN:
         raise RuntimeError("DHAN_CLIENT_ID and DHAN_ACCESS_TOKEN must be set as environment variables.")
+    asyncio.create_task(feed.run_forever())
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -112,10 +151,10 @@ async def websocket_endpoint(websocket: WebSocket):
                         connection_manager.disconnect(websocket, subscription_id)
             
             if method == 'SUBSCRIBE':
-                dhan.subscribe_symbols(instrument_tuples, on_message=on_message, on_error=on_error, on_close=on_close, on_open=on_open)
+                feed.subscribe_symbols(instrument_tuples)
                 await websocket.send_json({"result": None, "id": data.get('id')})
             elif method == 'UNSUBSCRIBE':
-                dhan.unsubscribe_symbols(instrument_tuples)
+                feed.unsubscribe_symbols(instrument_tuples)
                 await websocket.send_json({"result": None, "id": data.get('id')})
 
 
@@ -126,35 +165,6 @@ async def websocket_endpoint(websocket: WebSocket):
 
     except Exception as e:
         logging.error(f"An error occurred in websocket endpoint: {e}")
-
-def on_message(message):
-    logging.info(f"Received message from DhanHQ: {message}")
-    security_id = message['security_id']
-    trading_symbol = security_id_to_symbol.get(int(security_id))
-    if trading_symbol:
-        binance_like_data = {
-            "e": "kline",
-            "E": message['exchange_timestamp'],
-            "s": trading_symbol,
-            "k": {
-                "t": message['exchange_timestamp'],
-                "o": message['ltp'],
-                "h": message['ltp'],
-                "l": message['ltp'],
-                "c": message['ltp'],
-                "v": 0,
-            }
-        }
-        asyncio.run(connection_manager.broadcast(binance_like_data, security_id))
-
-def on_error(error):
-    logging.error(f"Received error from DhanHQ: {error}")
-
-def on_close(close_status_code, close_msg):
-    logging.info(f"Connection closed with status code: {close_status_code}, message: {close_msg}")
-
-def on_open():
-    logging.info("Connected to DhanHQ WebSocket.")
 
 @app.get("/")
 def read_root():
