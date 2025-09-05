@@ -5,7 +5,7 @@ import logging
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict
-from dhanhq import MarketFeed
+from dhanhq import marketfeed
 
 # --- Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
