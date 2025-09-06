@@ -7,7 +7,7 @@ import logging
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Set, Tuple
-from dhanhq.marketfeed import DhanFeed
+from dhanhq.marketfeed import DhanFeed, Ticker
 
 # --- Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -145,7 +145,8 @@ class DhanFeedManager:
             self.dhan = DhanFeed(
                 self.client_id,
                 self.access_token,
-                list(self.subscribed_instruments)
+                list(self.subscribed_instruments),
+                Ticker
             )
             self.dhan.on_connect = self.on_connect
             self.dhan.on_message = self.on_message
