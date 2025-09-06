@@ -7,7 +7,7 @@ import logging
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Set, Tuple
-from dhanhq.marketfeed import DhanFeed, Ticker
+from dhanhq.marketfeed import DhanFeed
 
 # --- Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -99,6 +99,7 @@ class DhanFeedManager:
             self.dhan.subscribe_symbols(list(self.subscribed_instruments))
 
     def on_message(self, instance, message):
+        print(f"--- DHANHQ RAW RESPONSE ---: {message}")
         logging.info(f"Received message from DhanHQ: {message}")
         print(f"--- DHANHQ RESPONSE ---: {message}")
         feed_code = message.get('type')
@@ -145,8 +146,7 @@ class DhanFeedManager:
             self.dhan = DhanFeed(
                 self.client_id,
                 self.access_token,
-                list(self.subscribed_instruments),
-                Ticker
+                list(self.subscribed_instruments)
             )
             self.dhan.on_connect = self.on_connect
             self.dhan.on_message = self.on_message
@@ -229,10 +229,12 @@ async def websocket_endpoint(websocket: WebSocket):
             if method == 'SUBSCRIBE':
                 dhan_manager.subscribe(instrument_tuples)
                 response = {"result": None, "id": data.get('id')}
+                print(f"--- CUSTOM WEBSOCKET RESPONSE TO CLIENT ---: {response}")
                 logging.info(f"Sending subscription confirmation to client {websocket.client}: {response}")
                 await websocket.send_json(response)
             elif method == 'UNSUBSCRIBE':
                 response = {"result": None, "id": data.get('id')}
+                print(f"--- CUSTOM WEBSOCKET RESPONSE TO CLIENT ---: {response}")
                 logging.info(f"Sending unsubscription confirmation to client {websocket.client}: {response}")
                 await websocket.send_json(response)
 
