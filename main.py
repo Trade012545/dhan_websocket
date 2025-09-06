@@ -138,6 +138,8 @@ class DhanFeedManager:
 
     def run(self):
         if not self.is_running:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             self.dhan = DhanFeed(
                 self.client_id,
                 self.access_token,
