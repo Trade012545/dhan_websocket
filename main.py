@@ -92,16 +92,17 @@ class DhanFeedManager:
         self.loop = loop
 
     def on_connect(self, instance):
+        print("--- DHANHQ WEBSOCKET CONNECTED ---")
         logging.info("Connected to DhanHQ WebSocket.")
         self.is_running = True
         if self.subscribed_instruments:
+            print(f"--- RE-SUBSCRIBING TO INSTRUMENTS ON RECONNECT ---: {self.subscribed_instruments}")
             logging.info(f"Subscribing to all instruments on reconnect: {self.subscribed_instruments}")
             self.dhan.subscribe_symbols(list(self.subscribed_instruments))
 
     def on_message(self, instance, message):
         print(f"--- DHANHQ RAW RESPONSE ---: {message}")
         logging.info(f"Received message from DhanHQ: {message}")
-        print(f"--- DHANHQ RESPONSE ---: {message}")
         feed_code = message.get('type')
         security_id = message.get('securityId')
 
@@ -160,15 +161,19 @@ class DhanFeedManager:
         new_instruments = [inst for inst in instruments if inst not in self.subscribed_instruments]
         if not new_instruments:
             return
+        print(f"--- SUBSCRIBING TO INSTRUMENTS ---: {new_instruments}")
         logging.info(f"Sending subscription request to DhanHQ for: {new_instruments}")
         self.subscribed_instruments.update(new_instruments)
         if self.dhan and self.is_running:
+            print(f"--- SENDING SUBSCRIBE REQUEST TO DHANHQ ---: {list(self.subscribed_instruments)}")
             self.dhan.subscribe_symbols(list(self.subscribed_instruments))
 
     def unsubscribe(self, instruments: List[Tuple[int, int]]):
+        print(f"--- UNSUBSCRIBING FROM INSTRUMENTS ---: {instruments}")
         logging.info(f"Sending unsubscription request to DhanHQ for: {instruments}")
         self.subscribed_instruments.difference_update(instruments)
         if self.dhan and self.is_running:
+            print(f"--- SENDING UNSUBSCRIBE REQUEST TO DHANHQ ---: {list(instruments)}")
             self.dhan.unsubscribe_symbols(list(instruments))
 
 
@@ -192,6 +197,7 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_json()
+            print(f"--- CUSTOM WEBSOCKET RECEIVED FROM CLIENT ---: {data}")
             logging.info(f"Received message from client {websocket.client}: {data}")
             method = data.get('method')
             params = data.get('params', [])
@@ -228,12 +234,15 @@ async def websocket_endpoint(websocket: WebSocket):
                             dhan_manager.unsubscribe([(exchange_segment_int, int(security_id))])
 
             if method == 'SUBSCRIBE':
+                print(f"--- PARSED INSTRUMENT TUPLES FOR DHANHQ ---: {instrument_tuples}")
                 dhan_manager.subscribe(instrument_tuples)
                 response = {"result": None, "id": data.get('id')}
                 print(f"--- CUSTOM WEBSOCKET RESPONSE TO CLIENT ---: {response}")
                 logging.info(f"Sending subscription confirmation to client {websocket.client}: {response}")
                 await websocket.send_json(response)
             elif method == 'UNSUBSCRIBE':
+                print(f"--- PARSED INSTRUMENT TUPLES FOR DHANHQ ---: {instrument_tuples}")
+                dhan_manager.unsubscribe(instrument_tuples)
                 response = {"result": None, "id": data.get('id')}
                 print(f"--- CUSTOM WEBSOCKET RESPONSE TO CLIENT ---: {response}")
                 logging.info(f"Sending unsubscription confirmation to client {websocket.client}: {response}")
