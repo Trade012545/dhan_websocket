@@ -75,6 +75,7 @@ class ConnectionManager:
         logging.info(f"Broadcasting to {len(connections)} clients for subscription {subscription_id}")
         for connection in connections:
             logging.info(f"Sending to client {connection.client}: {message}")
+            print(f"--- SENDING TO CLIENT ---: {message}")
             await connection.send_json(message)
 
 # --- DhanHQ Feed Manager ---
@@ -97,6 +98,7 @@ class DhanFeedManager:
 
     def on_message(self, instance, message):
         logging.info(f"Received message from DhanHQ: {message}")
+        print(f"--- DHANHQ RESPONSE ---: {message}")
         feed_code = message.get('type')
         security_id = message.get('securityId')
 
@@ -139,12 +141,12 @@ class DhanFeedManager:
             self.dhan = DhanFeed(
                 self.client_id,
                 self.access_token,
-                list(self.subscribed_instruments),
-                self.on_connect,
-                self.on_message,
-                self.on_error,
-                self.on_close
+                list(self.subscribed_instruments)
             )
+            self.dhan.on_connect = self.on_connect
+            self.dhan.on_message = self.on_message
+            self.dhan.on_error = self.on_error
+            self.dhan.on_close = self.on_close
             self.dhan.run_forever()
 
 
