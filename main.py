@@ -14,6 +14,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 DHAN_CLIENT_ID = os.environ.get("DHAN_CLIENT_ID")
 DHAN_ACCESS_TOKEN = os.environ.get("DHAN_ACCESS_TOKEN")
+print(f"--- USING DHAN_CLIENT_ID ---: {DHAN_CLIENT_ID}")
+print(f"--- USING DHAN_ACCESS_TOKEN ---: {DHAN_ACCESS_TOKEN}")
 
 # --- Exchange Segment Mapping ---
 exchange_segment_map = {
