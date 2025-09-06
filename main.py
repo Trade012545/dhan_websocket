@@ -146,7 +146,8 @@ class DhanFeedManager:
             self.dhan = DhanFeed(
                 self.client_id,
                 self.access_token,
-                list(self.subscribed_instruments)
+                list(self.subscribed_instruments),
+                version='v2'
             )
             self.dhan.on_connect = self.on_connect
             self.dhan.on_message = self.on_message
