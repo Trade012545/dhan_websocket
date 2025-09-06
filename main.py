@@ -135,13 +135,13 @@ class DhanFeedManager:
     def run(self):
         if not self.is_running:
             self.dhan = DhanFeed(
-                self.client_id, 
-                self.access_token, 
-                list(self.subscribed_instruments), 
-                on_connect=self.on_connect, 
-                on_message=self.on_message, 
-                on_error=self.on_error, 
-                on_close=self.on_close
+                self.client_id,
+                self.access_token,
+                list(self.subscribed_instruments),
+                self.on_connect,
+                self.on_message,
+                self.on_error,
+                self.on_close
             )
             self.dhan.run_forever()
 
