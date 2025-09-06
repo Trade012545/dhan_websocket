@@ -72,8 +72,9 @@ class ConnectionManager:
 
     async def broadcast(self, message: dict, subscription_id: str):
         connections = self.active_connections.get(subscription_id, [])[:]
-        logging.info(f"Broadcasting to {len(connections)} clients for subscription {subscription_id}: {message}")
+        logging.info(f"Broadcasting to {len(connections)} clients for subscription {subscription_id}")
         for connection in connections:
+            logging.info(f"Sending to client {connection.client}: {message}")
             await connection.send_json(message)
 
 # --- DhanHQ Feed Manager ---
@@ -91,6 +92,7 @@ class DhanFeedManager:
         logging.info("Connected to DhanHQ WebSocket.")
         self.is_running = True
         if self.subscribed_instruments:
+            logging.info(f"Subscribing to all instruments on reconnect: {self.subscribed_instruments}")
             self.dhan.subscribe_symbols(list(self.subscribed_instruments))
 
     def on_message(self, instance, message):
@@ -150,11 +152,13 @@ class DhanFeedManager:
         new_instruments = [inst for inst in instruments if inst not in self.subscribed_instruments]
         if not new_instruments:
             return
+        logging.info(f"Sending subscription request to DhanHQ for: {new_instruments}")
         self.subscribed_instruments.update(new_instruments)
         if self.dhan and self.is_running:
             self.dhan.subscribe_symbols(list(self.subscribed_instruments))
 
     def unsubscribe(self, instruments: List[Tuple[int, int]]):
+        logging.info(f"Sending unsubscription request to DhanHQ for: {instruments}")
         self.subscribed_instruments.difference_update(instruments)
         if self.dhan and self.is_running:
             self.dhan.unsubscribe_symbols(list(instruments))
@@ -217,9 +221,13 @@ async def websocket_endpoint(websocket: WebSocket):
 
             if method == 'SUBSCRIBE':
                 dhan_manager.subscribe(instrument_tuples)
-                await websocket.send_json({"result": None, "id": data.get('id')})
+                response = {"result": None, "id": data.get('id')}
+                logging.info(f"Sending subscription confirmation to client {websocket.client}: {response}")
+                await websocket.send_json(response)
             elif method == 'UNSUBSCRIBE':
-                await websocket.send_json({"result": None, "id": data.get('id')})
+                response = {"result": None, "id": data.get('id')}
+                logging.info(f"Sending unsubscription confirmation to client {websocket.client}: {response}")
+                await websocket.send_json(response)
 
 
     except WebSocketDisconnect:
